@@ -1,0 +1,230 @@
+import java.io.*;
+import java.util.*;
+import java.text.*;
+import java.math.*;
+import java.util.regex.*;
+
+
+class Message{
+    private final String message;
+    
+    Message(String message){
+        this.message=message;
+    }
+    
+    public String getMessage(){
+        return message;
+    }
+}
+
+class TopicSubscriber{
+    private final AtomicInteger offset;
+    private final ISubscriber subscriber;
+    
+    TopicSubscriber(@NotNull final ISubscriber subscriber){
+        this.subscriber=subscriber;
+        this.offset=new AtomicInteger(0);
+    }
+    
+    public AtomicInteger getOffset(){
+        return offset;
+    }
+    
+    public ISubscriber getSubscriber(){
+        return subscriber;
+    }
+}
+
+public class SubscriberWorker implements Runnable{
+    private final Topic topic;
+    private final TopicSubscriber topicSubscriber;
+    
+    public SubscriberWorker(@NonNull final Topic topic, @Nonnull final TopicSubscriber topicSubscriber){
+        this.topic=topic;
+        this.topicSubscriber=topicSubscriber;
+    }
+    
+    
+    public void run(){
+        synchronized(topicSubscriber){
+            do{
+                int currOffset=topicSubscriber.getOffset().get();
+                while(currOffset>=topic.getMessages().size()){
+                    topicSubscriber.wait();
+                }
+                Message message=topic.getMessages().get(currOffset);
+                topicSubscriber.getSubscriber().consume(message);
+                topicSubscriber.getOffset().compareAndSet(currOffset,currOffset+1);
+            }
+            while(true);
+        }
+    }
+    
+    synchronized public void wakeUpIfNeeded(){
+        synchronized(topicSubscriber){
+            topicSubscriber.notify();
+        }
+    }
+}
+
+interface ISubscriber{
+    String getId();
+    void consume(Message message) throws InterruptedException;
+}
+
+class Topic{
+    private final String topicName;
+    private final String topicId;
+    private final List<Message> messages;
+    private final List<TopicSubscriber> subscribers;
+    
+    Topic(@NotNull final String topicName, @NotNull final String topicId){
+        this.topicName=topicName;
+        this.topicId=topicId;
+        this.messages = new ArrayList<>();
+        this.subscribers = new ArrayList<>();
+    }
+    
+    public String getTopicName(){
+        return topicName;
+    }
+    
+    public String getTopicId(){
+        return topicId;
+    }
+    
+    public List<Message> getMessages(){
+        return messages;
+    }
+    
+    public List<TopicSubscriber> getSubscribers(){
+        return subscribers;
+    }
+    
+    public synchronized void addMessage(@NotNull final Message message){
+        messages.add(message);
+    }
+    
+    public void addSubscriber(@NotNull final TopicSubscriber topicSubscriber){
+        subscribers.add(topicSubscriber);
+    }
+}
+
+class TopicHandler{
+    private final Topic topic;
+    private final Map<String,SubscriberWorker> subscriberWorkers;
+    
+    TopicHandler(@NotNull final Topic topic){
+        this.topic=topic;
+        subscriberWorkers= new HashMap<>();
+    }
+    
+    public void publish(){
+        for(TopicSubscriber topicSubscriber:topic.getSubscribers()){
+            startSubscriberWorker(topicSubscriber);
+        }
+    }
+    
+    public void startSubscriberWorker(@NotNull final TopicSubscriber topicSubscriber){
+        final String subscriberId= topicSubscriber.getSubscriber().getId();
+        if(!subscriberWorkers.containsKey(subscriberId)){
+            final SubscriberWorker subscriberWorker = new SubscriberWorker(topic, topicSubscriber);
+            subscriberWorkers.put(subscriberId,subscriberWorker);
+            new Thread(subscriberWorker).start();
+        }
+        final SubscriberWorker subscriberWorker=subscriberWorkers.get(subscriberId);
+        subscriberWorker.wakeUpIfNeeded();
+    }
+    
+}
+
+class Queue{
+    private final Map<String,TopicHandler> topicHandlers;
+    
+    public Queue(){
+        this.topicHandlers=new HashMap<>();
+    }
+    
+    public Topic createTopic(@NonNull final String topicName){
+        final Topic topic = new Topic(topicName,UUID.randomUUID().toString());
+        final Topichandler topicHandler = new TopicHandler(topic);
+        topicHandlers.put(topic.getTopicId(),topicHandler);
+        System.out.println("Created topic:"+topic.getTopicName());
+        return topic;
+    }
+    
+    public void subscribe(@NonNull final ISubscriber subscriber, @NonNull final Topic topic){
+        topic.addSubscriber(new TopicSubscriber(subscriber));
+        System.out.println(subscriber.getId()+" subscribed to topic:"+ topic.getTopicName());
+    }
+    
+    public void publish(@NonNull final Topic topic, @NonNull final Message message){
+        topic.addMessage(message);
+        System.out.println(message.getMessage()+"published to topic:"+topic.getTopicName());
+        new Thread(()->topicHandlers.get(topic.getTopicId()).publish()).start();
+    }
+    
+    public void resetOffset(@NonNull final Topic topic, @NonNull final ISubscribe subscriber, @NonNull final Integer newOffset){
+        for(TopicSubscriber topicSubscriber:topic.getSubscribers()){
+            if(topicSubscriber.getSubscriber().equals(subscriber)){
+                topicSubscriber.getOffset().set(newOffset);
+                System.out.println(topicSubscriber.getSubscriber().getId()+" offset reset to "+newOffset);
+                new Thread(()->topicHandlers.get(topic.getTopicId()).startSubscriberWorker(topicSubscriber)).start();
+                break;
+            }
+        }
+    }
+    
+}
+
+public class SleepingSubscriber implements ISubscribe{
+    private final String id;
+    private final int sleepingTimeInMillis;
+    
+    public SleepingSubscriber(String id, int sleepingTimeInMillis){
+        this.id=id;
+        this.sleepingTimeInMillis=sleepingTimeInMillis;
+    }
+    
+    public String getId(){
+        return id;
+    }
+    
+    public void consume(Message message)throws InterruptedException{
+        System.out.println("Subscriber : "+ id+" started consuming:"+message.getMessage());
+        Thread.sleep(sleepingTimeInMillis);
+        System.out.println("Subscriber : "+ id+" done consuming:"+message.getMessage());
+    }
+}
+
+public class Solution {
+ 
+ public static void main(String[] args) throws InterruptedException{
+        final Queue queue = new Queue();
+        final Topic topic1= queue.createTopic("t1");
+        final Topic topic2= queue.createTopic("t2");
+        
+        final ISubscribe sub1=new SleepingSubscriber("sub1", 10000);
+        final ISubscribe sub2=new SleepingSubscriber("sub2", 10000);
+        
+        queue.subscribe(sub1, topic1);
+        queue.subscribe(sub2, topic1);
+        
+        final ISubscribe sub3=new SleepingSubscriber("sub3", 5000);
+        
+        queue.subscribe(sub3, topic2);
+        
+        
+        queue.publish(topic1, new Message("m1"));
+        queue.publish(topic1, new Message("m2"));
+        queue.publish(topic2, new Message("m3"));
+        
+        Thread.sleep(15000);
+        
+        queue.publish(topic2, new Message("m4"));
+        queue.publish(topic1, new Message("m5"));
+        
+        queue.resetOffset(topic1, sub1, 0);
+        
+   }
+}
