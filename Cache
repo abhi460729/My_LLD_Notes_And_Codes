@@ -1,0 +1,209 @@
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.function.Function;
+
+public class Cache<KEY,VALUE>{
+    private final DataSource<KEY,VALUE> dataSource;
+    // Because I am going to have many methods accessing it, I should be able to use ConcurrentHashMap instead of HashMap so that I can pre optimize.
+    private final Map<KEY,CompletableFuture<Record<VALUE>>> map;
+    
+    private final PersistanceAlgorithm persistanceAlgorithm;
+    
+    private final ConcurrentSkipListMap<Long, List<KEY>> expiryQueue;
+    
+    private final ConcurrentSkipListMap<AccessDetails, List<KEY>> priorityQueue;
+    
+    private final ExecutorService threadPool[];
+    
+    private static final Integer THRESHOLD_SIZE=500;
+    
+    private final Integer expiryTimeInMillis;
+    
+    private final int poolSize;
+    
+    public Cache(DataSource<KEY, VALUE> dataSource, PersistanceAlgorithm persistanceAlgorithm, Integer expiryTimeInMillis, int poolSize, EvictionAlgorithm evictionAlgorithm, List<KEY> keys) {
+    	this.persistanceAlgorithm=persistanceAlgorithm;
+		this.dataSource = dataSource;
+		this.expiryTimeInMillis=expiryTimeInMillis;
+		this.map= new ConcurrentHashMap<>();
+		this.expiryQueue = new ConcurrentSkipListMap<>();
+		this.priorityQueue=new ConcurrentSkipListMap<>((first,second)->{
+			final var older= (int)(first.getAccessTimestamp()-second.getAccessTimestamp());
+			if(evictionAlgorithm.equals(EvictionAlgorithm.LRU)) {
+				return older;
+			}
+			else {
+				int answer=(int) (first.getAccessCount()==second.getAccessCount()?older:first.getAccessCount()-second.getAccessCount());
+				return answer;
+			}
+		});
+		this.threadPool= new ExecutorService[5];
+		this.poolSize=poolSize;
+		for(int i=0;i<this.poolSize;i++) {
+			threadPool[i]=Executors.newSingleThreadExecutor();
+		}
+		//Hot Loading
+		for(KEY key:keys) {
+			addToCache(key,dataSource.get(key));
+		}
+	}
+
+	public CompletableFuture<VALUE> get(KEY key){
+		return CompletableFuture.supplyAsync(()->getInAssignedThread(key), threadPool[key.hashCode()% poolSize]).thenCompose(Function.identity());
+    }
+	
+	private CompletableFuture<VALUE> getInAssignedThread(KEY key){
+		final CompletableFuture<Record<VALUE>> result;
+        if(map.containsKey(key)){
+        	final var recordFuture= map.get(key);
+        	result = recordFuture.thenApply(record->{
+        	if(record.getaccessDetails().getAccessTimestamp()>=System.currentTimeMillis()-expiryTimeInMillis){
+        		return CompletableFuture.completedFuture(record);
+        	}
+	        else{
+	        	expiryQueue.get(record.getLoadTime()).remove(record);
+	        	priorityQueue.get(record.getaccessDetails()).remove(record);
+	        	return addToCache(key,dataSource.get(key));
+	        }
+          }).thenCompose(Function.identity());
+        }
+        else {
+        	result=addToCache(key,dataSource.get(key));
+        }
+        return result.thenApply(record->{
+        	final var accessDetails=record.getaccessDetails();
+        	accessDetails.setAccessCount(accessDetails.getAccessCount()+1);
+        	accessDetails.setAccessTimestamp(System.currentTimeMillis());
+        	priorityQueue.putIfAbsent(accessDetails, new CopyOnWriteArrayList<>());
+        	priorityQueue.get(accessDetails).add(key);
+        	return record.getValue();
+        });
+	}
+    
+    // I am returning an acknowledgement via Future object as the calls are asynchronous
+    public CompletableFuture<Void> set(KEY key, VALUE value){
+        //return
+    	return CompletableFuture.supplyAsync(()->setInAssignedThread(key,value), threadPool[key.hashCode()% poolSize]).thenCompose(Function.identity());
+    }
+    
+    private CompletableFuture<Void> setInAssignedThread(KEY key, VALUE value){
+    	Record<VALUE> valueRecord= new Record<>(value, System.currentTimeMillis());
+    	if(map.containsKey(key)) {
+    		final var recordFuture = map.remove(key);
+    		recordFuture.thenAccept(record->{
+    		expiryQueue.remove(record.getLoadTime());
+    		priorityQueue.remove(record.getaccessDetails());
+    		});
+    	}
+    	if(persistanceAlgorithm.equals(PersistanceAlgorithm.WRITE_THROUGH)) {
+			addToCache(key, (CompletableFuture<VALUE>)dataSource.persist(key, value).thenApply(__->value).thenAccept(__->{}));
+			return CompletableFuture.completedFuture(null);
+		}
+		else {
+			addToCache(key,CompletableFuture.completedFuture(value));
+    		dataSource.persist(key, value);
+    		return CompletableFuture.completedFuture(null);
+		}
+    }
+    
+    private CompletableFuture<Record<VALUE>> addToCache(KEY key, CompletableFuture<VALUE> valueFuture){
+    	if(map.size()>=THRESHOLD_SIZE) {
+    		var expiredRecord=expiryQueue.pollFirstEntry();
+    		while(expiredRecord!=null && expiredRecord.getKey() < System.currentTimeMillis()-expiryTimeInMillis) {
+    			expiredRecord=expiryQueue.pollFirstEntry();
+    			final var expiredRecords=expiredRecord.getValue();
+    			for(final KEY record:expiredRecords) {
+    				priorityQueue.remove(record);
+    			}
+    		}
+    		if(map.size()>=THRESHOLD_SIZE) {
+    			final var lowPriorityKey=priorityQueue.firstEntry().getValue().stream().findAny();
+    			final var removedRecord = map.remove(lowPriorityKey.get()).toCompletableFuture().join();
+    			expiryQueue.get(removedRecord.getLoadTime()).remove(removedRecord);
+    			priorityQueue.firstEntry().getValue().remove(lowPriorityKey);
+    		}
+    	}
+    	final var result=valueFuture.thenApply(value->{
+	    	Record<VALUE> record = new Record(value, System.currentTimeMillis());
+	    	final var currentTime=System.currentTimeMillis();
+	    	expiryQueue.putIfAbsent(currentTime,new CopyOnWriteArrayList<>());
+	    	expiryQueue.get(currentTime).add((KEY)record);
+	    	priorityQueue.putIfAbsent(record.getaccessDetails(),new CopyOnWriteArrayList<>());
+	    	priorityQueue.get(record.getaccessDetails()).add(key);
+	    	return record;
+    	});
+    	map.put(key, result);
+    	return result;
+    }
+    
+}
+
+class DataSource<KEY, VALUE>{
+    public CompletableFuture<VALUE> get(KEY key){
+        return null;
+    }
+    
+    public CompletableFuture<Void> persist(KEY key, VALUE value){
+        return null;
+    }    
+}
+
+class Record<VALUE> implements Comparable<Record<VALUE>>{
+	private final VALUE value;
+	//LFU
+	private long loadTime;
+	
+	private final long insertionTime;
+	
+	public long getLoadTime() {
+		return loadTime;
+	}
+
+	public void setLoadTime(long loadTime) {
+		this.loadTime = loadTime;
+	}
+
+	private final AccessDetails accessDetails;
+	
+	public Record(VALUE value, long insertionTime) {
+		this.value=value;
+		this.insertionTime=insertionTime;
+		accessDetails= new AccessDetails();
+	}
+	
+	public AccessDetails getaccessDetails() {
+		return accessDetails;
+	}
+
+	public VALUE getValue() {
+		return value;
+	}
+	
+	public int compareTo(Record record) {
+		return (int) (accessDetails.getAccessTimestamp()-record.accessDetails.getAccessTimestamp());
+	}
+}
+
+class AccessDetails{
+	private long accessTimestamp;
+	private long accessCount;
+	public long getAccessTimestamp() {
+		return accessTimestamp;
+	}
+	public void setAccessTimestamp(long accessTimestamp) {
+		this.accessTimestamp = accessTimestamp;
+	}
+	public long getAccessCount() {
+		return accessCount;
+	}
+	public void setAccessCount(long accessCount) {
+		this.accessCount = accessCount;
+	}
+}
