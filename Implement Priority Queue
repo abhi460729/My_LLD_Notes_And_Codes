@@ -1,0 +1,76 @@
+
+public class PriorityQueue {
+	public static void main(String[] args) {
+		int arr[]= {1,8,5,3,7,9,4,2};
+		int n=arr.length;
+		buildHeap(arr,n);
+		
+		for(int i=0;i<n;i++) {
+			System.out.print(arr[i]+" ");
+		}
+		
+		System.out.println();
+				
+		int deletedNode=deleteNode(arr,n);
+		System.out.println(deletedNode);
+		
+		System.out.println();
+		
+		heapSort(arr,n);
+		
+		for(int i=0;i<n;i++) {
+			System.out.print(arr[i]+" ");
+		}
+
+	}
+
+	private static void heapSort(int[] arr, int n) {
+		for(int i=n-1;i>0;--i) {
+			int temp=arr[0]; 
+			arr[0]=arr[i];
+			arr[i]=temp;
+			heapify(arr,i,0);
+		}
+	}
+
+	private static void buildHeap(int[] arr, int n) {
+		int index=(n/2)-1;
+		
+		for(int i=index;i>=0;i--) {
+			heapify(arr,n,i);
+		}
+	}
+
+	private static void heapify(int[] arr, int n, int i) {
+		int largest=i;
+		int left=2*i+1;
+		int right=2*i+2;
+		
+		if(left<n && arr[left]>arr[largest]) {
+			largest=left;
+		}
+		
+		if(right<n && arr[right]>arr[largest]) {
+			largest=right;
+		}
+		
+		if(i!=largest) {
+			int temp=arr[i];
+			arr[i]=arr[largest];
+			arr[largest]=temp;
+			heapify(arr,n,largest);
+		}
+	}
+	
+	public static int deleteNode(int arr[], int n) {
+		int lastElement=arr[n-1];
+		int temp=arr[0];
+		arr[0]=lastElement;
+		arr[n-1]=temp;
+		n=n-1;
+		heapify(arr,n,0);
+		return arr[n-1];
+	}
+	
+	
+}
