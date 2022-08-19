@@ -1,0 +1,47 @@
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class Java8FlatMap {
+	public static void main(String[] args) {
+		
+		ArrayList<ArrayList<Integer>> list= new ArrayList<ArrayList<Integer>>();
+		
+		ArrayList<Integer> subList1= new ArrayList<Integer>();
+		subList1.add(1);
+		subList1.add(2);
+		subList1.add(3);
+		subList1.add(4);
+		
+		ArrayList<Integer> subList2= new ArrayList<Integer>();
+		subList2.add(5);
+		subList2.add(6);
+		subList2.add(7);
+		subList2.add(8);
+		
+		ArrayList<Integer> subList3= new ArrayList<Integer>();
+		subList3.add(9);
+		subList3.add(10);
+		subList3.add(11);
+		subList3.add(12);
+		
+		ArrayList<Integer> subList4= new ArrayList<Integer>();
+		subList4.add(13);
+		subList4.add(14);
+		subList4.add(15);
+		subList4.add(16);
+		
+		list.add(subList1);
+		list.add(subList2);
+		list.add(subList3);
+		list.add(subList4);
+		
+		List<Integer> ans=subList4.stream().map(element->element).collect(Collectors.toList());
+		
+		System.out.println(ans);
+		
+		List<Integer> answer=list.stream().flatMap(element->element.stream()).collect(Collectors.toList());
+		
+		System.out.println(answer);
+	}
+}
