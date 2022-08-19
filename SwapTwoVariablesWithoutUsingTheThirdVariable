@@ -1,0 +1,11 @@
+
+public class TestingClass {
+	public static void main(String[] args) {
+		int x=5;
+		int y=3;
+		x=x+y;//x=8
+		y=x-y;//y=5
+		x=x-y;//x=3
+		System.out.println(x+" "+y);
+	}
+}
