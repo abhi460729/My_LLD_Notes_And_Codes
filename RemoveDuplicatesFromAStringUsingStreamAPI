@@ -1,0 +1,9 @@
+public class RemoveDuplicatesFromAStringUsingStreamAPI {
+	public static void main(String[] args) {
+		String s="aaaabbgfrthiikllpp";
+		StringBuffer sb = new StringBuffer();
+		s.chars().distinct().forEach(c->sb.append((char)c));
+		String res=sb.toString();
+		System.out.println(res);
+	}
+}
