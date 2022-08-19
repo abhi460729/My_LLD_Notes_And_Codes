@@ -1,0 +1,22 @@
+class Singleton{
+	public static Singleton obj;
+	private Singleton() {
+		
+	}
+	public static Singleton getInstance() {
+		if(obj==null) {
+			synchronized (Singleton.class) {
+				if(obj==null) {
+					obj = new Singleton();
+				}
+			}
+		}
+		return obj;
+	}
+	public static void main(String[] args) {
+		Singleton ob= Singleton.getInstance();
+		Singleton ob1= Singleton.getInstance();
+		System.out.println(ob.hashCode());
+		System.out.println(ob1.hashCode());
+	}
+}
