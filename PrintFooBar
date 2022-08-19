@@ -1,0 +1,94 @@
+class Q1{
+	
+	int num;
+	boolean valueSet=false;
+	public synchronized void put(int num) {
+		while(valueSet) {
+			try {
+				wait();
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		System.out.print("Foo");
+		this.num=num;
+		valueSet=true;
+		notify();
+	}
+	
+	public synchronized void get() {
+		while(!valueSet) {
+			try {
+				wait();
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		System.out.print("Bar");
+		valueSet=false;
+		notify();
+		System.out.println();
+	}
+	
+	
+}
+class Producer1 implements Runnable{
+	Q1 q;
+	int n;
+	Producer1(Q1 q, int n){
+		this.q=q;
+		this.n=n;
+		Thread t = new Thread(this,"Producer");
+		t.start();
+	}
+
+	@Override
+	public void run() {
+		int i=0;
+		while(i<n) {
+			q.put(i++);
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+	
+}
+
+class Consumer1 implements Runnable{
+	int n;
+	Q1 q;
+	Consumer1(Q1 q, int n){
+		this.n=n;
+		this.q=q;
+		Thread t = new Thread(this,"Consumer");
+		t.start();
+	}
+
+	@Override
+	public void run() {
+		while(true) {
+			q.get();
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+	
+}
+public class PrintFooBar {
+	public static void main(String[] args) {
+		Q1 q = new Q1();
+		int n=5;
+		new Producer1(q,n);
+		new Consumer1(q,n);
+	}
+}
