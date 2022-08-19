@@ -1,0 +1,14 @@
+
+public final class Immutable {
+	public final int number;
+	Immutable(int number){
+		this.number=number;
+	}
+	public int getInstance() {
+		return number;
+	}
+	public static void main(String[] args) {
+		Immutable obj = new Immutable(10);
+		System.out.println(obj.getInstance());
+	}
+}
