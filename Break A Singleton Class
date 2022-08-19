@@ -1,0 +1,42 @@
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+
+public class BreakSingletonClass{
+	public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, FileNotFoundException, IOException, CloneNotSupportedException {
+		Singleton obj1=Singleton.getInstance();
+		Singleton obj2=Singleton.getInstance();
+		System.out.println(obj1.hashCode());
+		System.out.println(obj2.hashCode());
+		
+		//Reflection
+		Class<?> singletonClass=Class.forName("Singleton");
+		Constructor<Singleton> constructor=(Constructor<Singleton>)singletonClass.getDeclaredConstructor();
+		constructor.setAccessible(true);
+		Singleton newObject=constructor.newInstance();
+		System.out.println(newObject.hashCode());
+		
+		//Serialization
+		
+		System.out.println("-------------------------------------------------------------------------------");
+		
+		ObjectOutputStream outputStream = new ObjectOutputStream(new FileOutputStream("Desktop:Serialization.txt"));
+		outputStream.writeObject(obj1);
+		outputStream.close();
+		
+		ObjectInputStream inputStream = new ObjectInputStream(new FileInputStream("Desktop:Serialization.txt"));
+		Singleton myObject=(Singleton)inputStream.readObject();
+		
+		System.out.println(myObject.hashCode());
+		
+		Singleton newMyObject=(Singleton) obj1.clone();
+		
+		System.out.println(newMyObject.hashCode());
+		
+	}
+}
