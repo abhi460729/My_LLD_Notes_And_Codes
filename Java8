@@ -1,0 +1,74 @@
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+class Sample implements Cloneable{
+	int a;
+	int b;
+	
+	Sample(int a, int b){
+		this.a=a;
+		this.b=b;
+	}
+	
+	@Override
+	public Object clone() throws CloneNotSupportedException {
+		return super.clone();
+	}
+}
+
+@FunctionalInterface
+interface I1{
+	int calculate(int n);
+}
+
+public class Java8 {
+	public static void main(String[] args) throws CloneNotSupportedException {
+		
+		I1 i1 = x->x*x;
+		System.out.println(i1.calculate(5));
+		
+		List<List<Integer>> list = new ArrayList<>();
+		list.add(Arrays.asList(1,2,3));
+		list.add(Arrays.asList(6,5,4));
+		List<Integer> ans = list.stream().flatMap(value->value.stream()).collect(Collectors.toList());
+		System.out.println(ans);
+		
+		Sample obj1= new Sample(1,2);
+		Sample obj2= (Sample) obj1.clone();
+		System.out.println(obj1.a+" "+obj1.b);
+		System.out.println(obj2.a+" "+obj2.b);
+		System.out.println(obj1.hashCode());
+		System.out.println(obj1.equals(obj2));
+		
+		//Consumer
+		//Supplier
+		//Predicate
+		//Function
+		
+		List<Integer> l= Arrays.asList(1,2,3,4,5,6,7,8,9,10);
+		List<Integer> answer=l.stream().filter(val->(val>5)).map(val->val).collect(Collectors.toList());
+		System.out.println(answer);
+		
+		// 3
+		Predicate<Integer> p=val->(val>5);
+		System.out.println(p.test(2));
+		
+		// 1
+		Consumer<Integer> c=val->System.out.println(val);
+		c.accept(10);
+		
+		// 4
+		Function<String,Integer> f= val->val.length();
+		System.out.println(f.apply("ABHISHEK"));
+		
+		// 2
+		Supplier<String> s=()->("Abhishek");
+		System.out.println(s.get());
+		
+	}
+}
