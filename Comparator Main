@@ -1,0 +1,81 @@
+import java.util.*;
+interface I1{
+	public void show();
+}
+abstract class SampleAbstractClass{
+	public abstract void show1();
+	public void show2() {
+		System.out.println("Abstract Class");
+	}
+}
+class User implements I1{
+	public String name;
+	public int age;
+	public String getName() {
+		return name;
+	}
+	public void setName(String name) {
+		this.name = name;
+	}
+	public int getAge() {
+		return age;
+	}
+	public void setAge(int age) {
+		this.age = age;
+	}
+	@Override
+	public String toString() {
+		return "User [name=" + name + ", age=" + age + "]";
+	}
+	public User(String name, int age) {
+		String newName=reverse(name);
+		this.name=newName;
+		this.age=age;
+	}
+	private String reverse(String name) {
+		String newName="";
+		int l=name.length();
+		for(int i=0;i<l;i++) {
+			char ch=name.charAt(i);
+			newName=ch+newName;
+		}
+		return newName;
+	}
+	@Override
+	public void show() {
+		System.out.println("Hello Interface");
+		
+	}
+	
+}
+public class TestClass1{
+	public static void main(String[] args) {
+		HashSet<User> hs= new HashSet<User>();
+		hs.add(new User("Abhishek",40));
+		hs.add(new User("Ankit",50));
+		hs.add( new User("Shubham",25));
+		hs.add(new User("Ashutosh",35));
+		hs.add(new User("Brajendra",45));
+		hs.add( new User("Ram",55));
+		
+		List<User> userlist=new ArrayList<User>();
+		
+		for (User user : hs) {
+			System.out.println(user);
+		}
+		
+		for (User user : hs) {
+			userlist.add(user);
+		}
+		System.out.println("-----------------------");
+		userlist.sort(new MyComparator());
+		
+		for (User user : userlist) {
+			System.out.println(user);
+		}
+		
+		User u1=new User("Abhishek",40);
+		
+		u1.show();
+	}
+}
